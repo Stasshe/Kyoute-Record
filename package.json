@@ -15,7 +15,9 @@
     "autoprefixer": "10.4.21",
     "next": "16",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "@supabase/supabase-js": "^2.36.0",
+    "recharts": "^2.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.1",
