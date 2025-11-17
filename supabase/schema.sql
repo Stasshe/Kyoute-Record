@@ -23,19 +23,22 @@ create index if not exists idx_grades_user_date on public.grades(user_id, date);
 
 alter table public.grades enable row level security;
 
--- Allow authenticated users to select their own rows
-create policy if not exists "Select own" on public.grades
+-- Postgres doesn't support CREATE POLICY IF NOT EXISTS. Use DROP IF EXISTS -> CREATE
+-- Allow authenticated users to select/insert/update/delete only their own rows
+drop policy if exists "Select own" on public.grades;
+create policy "Select own" on public.grades
   for select using (auth.uid() = user_id);
 
--- Allow authenticated users to insert rows where new.user_id equals their uid
-create policy if not exists "Insert own" on public.grades
+drop policy if exists "Insert own" on public.grades;
+create policy "Insert own" on public.grades
   for insert with check (auth.uid() = user_id);
 
--- Allow update/delete only for the owner
-create policy if not exists "Update own" on public.grades
+drop policy if exists "Update own" on public.grades;
+create policy "Update own" on public.grades
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create policy if not exists "Delete own" on public.grades
+drop policy if exists "Delete own" on public.grades;
+create policy "Delete own" on public.grades
   for delete using (auth.uid() = user_id);
 
 -- If you already have existing rows to migrate, set user_id accordingly or remove them.

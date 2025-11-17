@@ -1,6 +1,7 @@
+
 "use client"
 import { supabaseClient } from '@/lib/supabaseClient'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Chart from './Chart'
 
 const SUBJECTS = ['Math IA', 'Math 2B', 'Physics', 'Chemistry']
@@ -14,27 +15,26 @@ export default function GradesPage() {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
+  const [email, setEmail] = useState<string>('')
+  const [password, setPassword] = useState<string>('')
+
   useEffect(() => {
-    // initial session
     ;(async () => {
       const { data } = await supabaseClient.auth.getSession()
       setUser(data.session?.user ?? null)
     })()
 
-    // listen to auth changes
     const { data: sub } = supabaseClient.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
     })
 
     return () => {
-      // unsubscribe
       try {
         sub.subscription.unsubscribe()
       } catch (e) {
         // ignore
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -83,8 +83,22 @@ export default function GradesPage() {
     fetchGrades()
   }
 
-  async function signInWithGoogle() {
-    await supabaseClient.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin + '/grades' } })
+  async function signUpWithEmail() {
+    const { error } = await supabaseClient.auth.signUp({ email, password })
+    if (error) {
+      alert('サインアップ失敗: ' + error.message)
+      return
+    }
+    alert('サインアップ成功。確認メールを確認してください（必要に応じて）。')
+  }
+
+  async function signInWithEmail() {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password })
+    if (error) {
+      alert('サインイン失敗: ' + error.message)
+      return
+    }
+    setUser(data.session?.user ?? null)
   }
 
   async function signOut() {
@@ -93,8 +107,7 @@ export default function GradesPage() {
     setRows([])
   }
 
-  // transform rows to chart series grouped by date
-  const chartData = React.useMemo(() => {
+  const chartData = useMemo(() => {
     const map: Record<string, any> = {}
     for (const r of rows) {
       const d = r.date?.slice(0, 10) || r.date
@@ -111,31 +124,24 @@ export default function GradesPage() {
 
         <section className="mb-6">
           <label className="block text-sm mb-1">表示開始日</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="border rounded px-2 py-1"
-          />
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border rounded px-2 py-1" />
         </section>
 
         <section className="mb-6">
           <div className="flex items-center justify-between mb-3">
-            {user ? (
-              <div className="text-sm">こんにちは、{user.email}</div>
-            ) : (
-              <div className="text-sm text-slate-600">ログインしてください（Google）</div>
-            )}
-            <div>
-              {user ? (
-                <button onClick={signOut} className="text-sm text-slate-700 underline">
-                  サインアウト
-                </button>
-              ) : (
-                <button onClick={signInWithGoogle} className="bg-red-600 text-white px-3 py-1 rounded text-sm">
-                  Google でログイン
-                </button>
+            {user ? <div className="text-sm">こんにちは、{user.email}</div> : <div className="text-sm text-slate-600">ログインしてください</div>}
+
+            <div className="flex items-center gap-2">
+              {!user && (
+                <>
+                  <input type="email" placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} className="border rounded px-2 py-1" />
+                  <input type="password" placeholder="password" value={password} onChange={(e) => setPassword(e.target.value)} className="border rounded px-2 py-1" />
+                  <button onClick={signInWithEmail} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">サインイン</button>
+                  <button onClick={signUpWithEmail} className="bg-green-600 text-white px-3 py-1 rounded text-sm">サインアップ</button>
+                </>
               )}
+
+              {user && <button onClick={signOut} className="text-sm text-slate-700 underline">サインアウト</button>}
             </div>
           </div>
 
