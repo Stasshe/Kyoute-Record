@@ -1,6 +1,5 @@
 "use client"
 import { supabaseClient } from '@/lib/supabaseClient'
-import { Check, LogIn, LogOut, Pencil, Plus, Trash2, X } from 'lucide-react'
 import React, { useEffect, useMemo, useState } from 'react'
 import Chart from './Chart'
 
@@ -66,7 +65,7 @@ export default function GradesPage() {
       .order('inserted_at', { ascending: true })
 
     if (error) {
-      console.error(error)
+      console.error('Fetch error:', error)
       setLoading(false)
       return
     }
@@ -78,43 +77,96 @@ export default function GradesPage() {
   async function addGrade(e: React.FormEvent) {
     e.preventDefault()
     if (!user) {
-      alert('サインインしてください')
+      alert('ログインしてください')
       return
     }
 
     const payload = { date: selectedDate, subject, score, user_id: user.id }
     const { error } = await supabaseClient.from('grades').insert([payload])
     if (error) {
-      console.error(error)
-      alert('追加エラー: ' + error.message)
+      console.error('Insert error:', error)
+      alert('追加失敗: ' + error.message)
       return
     }
     fetchGrades()
   }
 
   async function saveEdit(id: number) {
-    const { date, subject: s, score: sc } = editingFields
-    
-    // 日付フォーマットを確実にYYYY-MM-DD形式にする
-    const formattedDate = date.includes('T') ? date.slice(0, 10) : date
-    
-    const { error } = await supabaseClient
-      .from('grades')
-      .update({ date: formattedDate, subject: s, score: sc })
-      .eq('id', id)
-      
-    if (error) {
-      console.error('Update error:', error)
-      alert('更新エラー: ' + error.message)
+    if (!user) {
+      alert('ログインしてください')
       return
     }
-    setEditingId(null)
-    fetchGrades()
+
+    const { date, subject: s, score: sc } = editingFields
+    
+    // 日付を確実にYYYY-MM-DD形式にする
+    const dateStr = date.split('T')[0]
+    
+    console.log('=== UPDATE DEBUG ===')
+    console.log('User ID:', user.id)
+    console.log('Row ID:', id)
+    console.log('Update payload:', { date: dateStr, subject: s, score: sc })
+    
+    try {
+      // まず現在のデータを取得
+      const { data: currentData, error: fetchError } = await supabaseClient
+        .from('grades')
+        .select('*')
+        .eq('id', id)
+        .single()
+      
+      if (fetchError) {
+        console.error('Fetch error:', fetchError)
+        alert('データ取得エラー: ' + fetchError.message)
+        return
+      }
+      
+      console.log('Current data:', currentData)
+      console.log('User owns this row?', currentData.user_id === user.id)
+      
+      // 削除して再挿入する方法を試す（回避策）
+      const { error: deleteError } = await supabaseClient
+        .from('grades')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id)
+      
+      if (deleteError) {
+        console.error('Delete error:', deleteError)
+        alert('削除エラー: ' + deleteError.message)
+        return
+      }
+      
+      // 新しいデータを挿入
+      const { error: insertError } = await supabaseClient
+        .from('grades')
+        .insert([{ 
+          date: dateStr, 
+          subject: s, 
+          score: sc, 
+          user_id: user.id,
+          inserted_at: currentData.inserted_at // 元の挿入時刻を保持
+        }])
+      
+      if (insertError) {
+        console.error('Insert error:', insertError)
+        alert('挿入エラー: ' + insertError.message)
+        return
+      }
+      
+      console.log('Update completed via delete+insert')
+      setEditingId(null)
+      fetchGrades()
+      
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      alert('予期しないエラー: ' + String(err))
+    }
   }
 
   function startEdit(row: any) {
     setEditingId(row.id)
-    const dateStr = row.date?.slice(0, 10) || row.date
+    const dateStr = row.date?.split('T')[0] || row.date
     setEditingFields({ date: dateStr, subject: row.subject, score: row.score })
   }
 
@@ -123,11 +175,11 @@ export default function GradesPage() {
   }
 
   async function deleteRow(id: number) {
-    if (!confirm('この行を削除しますか？')) return
-    const { error } = await supabaseClient.from('grades').delete().eq('id', id)
+    if (!confirm('削除しますか？')) return
+    const { error } = await supabaseClient.from('grades').delete().eq('id', id).eq('user_id', user.id)
     if (error) {
-      console.error(error)
-      alert('削除エラー: ' + error.message)
+      console.error('Delete error:', error)
+      alert('削除失敗: ' + error.message)
       return
     }
     fetchGrades()
@@ -136,16 +188,16 @@ export default function GradesPage() {
   async function signUpWithEmail() {
     const { error } = await supabaseClient.auth.signUp({ email, password })
     if (error) {
-      alert('サインアップ失敗: ' + error.message)
+      alert('登録失敗: ' + error.message)
       return
     }
-    alert('サインアップ成功。確認メールを確認してください。')
+    alert('登録完了。確認メールを確認してください。')
   }
 
   async function signInWithEmail() {
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password })
     if (error) {
-      alert('サインイン失敗: ' + error.message)
+      alert('ログイン失敗: ' + error.message)
       return
     }
     setUser(data.session?.user ?? null)
@@ -160,7 +212,7 @@ export default function GradesPage() {
   const chartData = useMemo(() => {
     const map: Record<string, any> = {}
     for (const r of rows) {
-      const d = r.date?.slice(0, 10) || r.date
+      const d = r.date?.split('T')[0] || r.date
       if (!map[d]) map[d] = { date: d }
       map[d][r.subject] = r.score
     }
@@ -168,235 +220,171 @@ export default function GradesPage() {
   }, [rows])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              共通テスト成績管理
-            </h1>
-            
-            {user ? (
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-slate-600">{user.email}</span>
-                <button
-                  onClick={signOut}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:text-slate-900 transition-colors"
-                >
-                  <LogOut size={16} />
-                  ログアウト
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <input
-                  type="email"
-                  placeholder="メールアドレス"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="password"
-                  placeholder="パスワード"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={signInWithEmail}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <LogIn size={16} />
-                  ログイン
-                </button>
-                <button
-                  onClick={signUpWithEmail}
-                  className="px-4 py-2 bg-white text-blue-600 text-sm border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-                >
-                  新規登録
-                </button>
-              </div>
-            )}
-          </div>
+      <div className="border-b">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+          <h1 className="text-xl font-medium">共テ成績管理</h1>
+          
+          {user ? (
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-gray-600">{user.email}</span>
+              <button onClick={signOut} className="text-gray-700 hover:text-black">ログアウト</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="email"
+                placeholder="メール"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="text-sm px-2 py-1 border rounded w-40"
+              />
+              <input
+                type="password"
+                placeholder="パスワード"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="text-sm px-2 py-1 border rounded w-32"
+              />
+              <button onClick={signInWithEmail} className="text-sm px-3 py-1 bg-black text-white rounded">ログイン</button>
+              <button onClick={signUpWithEmail} className="text-sm px-3 py-1 border rounded">登録</button>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Add Grade Form */}
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {/* Form */}
         {user && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-800 mb-4">成績を追加</h2>
-            <form onSubmit={addGrade} className="flex flex-wrap gap-4 items-end">
-              <div className="flex-1 min-w-[140px]">
-                <label className="block text-sm font-medium text-slate-700 mb-2">日付</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex-1 min-w-[140px]">
-                <label className="block text-sm font-medium text-slate-700 mb-2">科目</label>
-                <select
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {SUBJECTS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1 min-w-[100px]">
-                <label className="block text-sm font-medium text-slate-700 mb-2">点数</label>
-                <input
-                  type="number"
-                  value={score}
-                  onChange={(e) => setScore(Number(e.target.value))}
-                  min="0"
-                  max="100"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <button
-                type="submit"
-                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          <form onSubmit={addGrade} className="flex items-end gap-3">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">日付</label>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="text-sm px-2 py-1 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">科目</label>
+              <select
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="text-sm px-2 py-1 border rounded"
               >
-                <Plus size={18} />
-                追加
-              </button>
-            </form>
-          </div>
+                {SUBJECTS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">点数</label>
+              <input
+                type="number"
+                value={score}
+                onChange={(e) => setScore(Number(e.target.value))}
+                min="0"
+                max="100"
+                className="text-sm px-2 py-1 border rounded w-20"
+              />
+            </div>
+            <button type="submit" className="text-sm px-4 py-1 bg-black text-white rounded">追加</button>
+          </form>
         )}
 
         {/* Filter */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-          <div className="flex items-center gap-4">
-            <label className="text-sm font-medium text-slate-700">表示期間:</label>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="text-sm text-slate-600">以降のデータを表示</span>
-          </div>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="text-gray-600">表示:</label>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="px-2 py-1 border rounded"
+          />
+          <span className="text-gray-600">以降</span>
         </div>
 
         {/* Chart */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">成績推移グラフ</h2>
+        <div className="border rounded p-4">
           <Chart data={chartData} subjects={SUBJECTS} />
         </div>
 
-        {/* Data Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4">データ一覧</h2>
+        {/* Table */}
+        <div className="border rounded">
           {loading ? (
-            <div className="text-center py-8 text-slate-600">読み込み中...</div>
+            <div className="p-8 text-center text-gray-500 text-sm">読み込み中...</div>
           ) : rows.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">データがありません</div>
+            <div className="p-8 text-center text-gray-400 text-sm">データなし</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b-2 border-slate-200">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">日付</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">科目</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">点数</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">操作</th>
+            <table className="w-full text-sm">
+              <thead className="border-b bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">日付</th>
+                  <th className="px-3 py-2 text-left font-medium">科目</th>
+                  <th className="px-3 py-2 text-left font-medium">点数</th>
+                  <th className="px-3 py-2 text-right font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                    {editingId === r.id ? (
+                      <>
+                        <td className="px-3 py-2">
+                          <input
+                            type="date"
+                            value={editingFields.date}
+                            onChange={(e) => setEditingFields((p) => ({ ...p, date: e.target.value }))}
+                            className="text-sm px-2 py-1 border rounded"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={editingFields.subject}
+                            onChange={(e) => setEditingFields((p) => ({ ...p, subject: e.target.value }))}
+                            className="text-sm px-2 py-1 border rounded"
+                          >
+                            {SUBJECTS.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            value={editingFields.score}
+                            onChange={(e) => setEditingFields((p) => ({ ...p, score: Number(e.target.value) }))}
+                            min="0"
+                            max="100"
+                            className="text-sm px-2 py-1 border rounded w-20"
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => saveEdit(r.id)} className="text-blue-600 hover:underline">保存</button>
+                            <button onClick={cancelEdit} className="text-gray-600 hover:underline">戻る</button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-2">{r.date?.split('T')[0] || r.date}</td>
+                        <td className="px-3 py-2">{r.subject}</td>
+                        <td className="px-3 py-2">{r.score}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => startEdit(r)} className="text-blue-600 hover:underline">編集</button>
+                            <button onClick={() => deleteRow(r.id)} className="text-red-600 hover:underline">削除</button>
+                          </div>
+                        </td>
+                      </>
+                    )}
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                      {editingId === r.id ? (
-                        <>
-                          <td className="px-4 py-3">
-                            <input
-                              type="date"
-                              value={editingFields.date}
-                              onChange={(e) => setEditingFields((p) => ({ ...p, date: e.target.value }))}
-                              className="px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <select
-                              value={editingFields.subject}
-                              onChange={(e) => setEditingFields((p) => ({ ...p, subject: e.target.value }))}
-                              className="px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {SUBJECTS.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-4 py-3">
-                            <input
-                              type="number"
-                              value={editingFields.score}
-                              onChange={(e) => setEditingFields((p) => ({ ...p, score: Number(e.target.value) }))}
-                              min="0"
-                              max="100"
-                              className="w-20 px-2 py-1 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={() => saveEdit(r.id)}
-                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="保存"
-                              >
-                                <Check size={18} />
-                              </button>
-                              <button
-                                onClick={cancelEdit}
-                                className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                title="キャンセル"
-                              >
-                                <X size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-4 py-3 text-sm text-slate-700">{r.date?.slice(0, 10) || r.date}</td>
-                          <td className="px-4 py-3 text-sm text-slate-700">{r.subject}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{r.score}点</td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={() => startEdit(r)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="編集"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                              <button
-                                onClick={() => deleteRow(r.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="削除"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>
