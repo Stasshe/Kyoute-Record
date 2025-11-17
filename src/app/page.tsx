@@ -17,6 +17,13 @@ export default function GradesPage() {
 
   const [email, setEmail] = useState<string>('')
   const [password, setPassword] = useState<string>('')
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10))
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingFields, setEditingFields] = useState<{ date: string; subject: string; score: number }>({
+    date: new Date().toISOString().slice(0, 10),
+    subject: SUBJECTS[0] ?? '',
+    score: 0,
+  })
 
   useEffect(() => {
     ;(async () => {
@@ -52,10 +59,11 @@ export default function GradesPage() {
 
     const { data, error } = await supabaseClient
       .from('grades')
-      .select('id,date,subject,score')
+      .select('id,date,subject,score,inserted_at')
       .eq('user_id', user.id)
       .gte('date', from)
       .order('date', { ascending: true })
+      .order('inserted_at', { ascending: true })
 
     if (error) {
       console.error(error)
@@ -74,8 +82,38 @@ export default function GradesPage() {
       return
     }
 
-    const payload = { date: new Date().toISOString().slice(0, 10), subject, score, user_id: user.id }
+    const payload = { date: selectedDate, subject, score, user_id: user.id }
     const { error } = await supabaseClient.from('grades').insert([payload])
+    if (error) {
+      console.error(error)
+      return
+    }
+    fetchGrades()
+  }
+
+  async function saveEdit(id: number) {
+    const { date, subject: s, score: sc } = editingFields
+    const { error } = await supabaseClient.from('grades').update({ date, subject: s, score: sc }).eq('id', id)
+    if (error) {
+      console.error(error)
+      return
+    }
+    setEditingId(null)
+    fetchGrades()
+  }
+
+  function startEdit(row: any) {
+    setEditingId(row.id)
+    setEditingFields({ date: row.date?.slice(0, 10) || row.date, subject: row.subject, score: row.score })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+  }
+
+  async function deleteRow(id: number) {
+    if (!confirm('この行を削除しますか？')) return
+    const { error } = await supabaseClient.from('grades').delete().eq('id', id)
     if (error) {
       console.error(error)
       return
@@ -147,6 +185,10 @@ export default function GradesPage() {
 
           <form onSubmit={addGrade} className="flex gap-2 items-end">
             <div>
+              <label className="block text-sm mb-1">日付</label>
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="border rounded px-2 py-1" />
+            </div>
+            <div>
               <label className="block text-sm mb-1">科目</label>
               <select value={subject} onChange={(e) => setSubject(e.target.value)} className="border rounded px-2 py-1">
                 {SUBJECTS.map((s) => (
@@ -164,7 +206,7 @@ export default function GradesPage() {
 
             <div>
               <button className="bg-blue-600 text-white px-3 py-1 rounded" type="submit">
-                追加（今日）
+                追加
               </button>
             </div>
           </form>
@@ -188,14 +230,49 @@ export default function GradesPage() {
                   <th className="py-1">日付</th>
                   <th className="py-1">科目</th>
                   <th className="py-1">点数</th>
+                  <th className="py-1">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b">
-                    <td className="py-1">{r.date?.slice(0, 10) || r.date}</td>
-                    <td className="py-1">{r.subject}</td>
-                    <td className="py-1">{r.score}</td>
+                    {editingId === r.id ? (
+                      <>
+                        <td className="py-1">
+                          <input type="date" value={editingFields.date} onChange={(e) => setEditingFields((p) => ({ ...p, date: e.target.value }))} className="border rounded px-2 py-1" />
+                        </td>
+                        <td className="py-1">
+                          <select value={editingFields.subject} onChange={(e) => setEditingFields((p) => ({ ...p, subject: e.target.value }))} className="border rounded px-2 py-1">
+                            {SUBJECTS.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-1">
+                          <input type="number" value={editingFields.score} onChange={(e) => setEditingFields((p) => ({ ...p, score: Number(e.target.value) }))} className="w-24 border rounded px-2 py-1" />
+                        </td>
+                        <td className="py-1">
+                          <div className="flex gap-2">
+                            <button onClick={() => saveEdit(r.id)} className="bg-blue-600 text-white px-2 py-1 rounded text-sm">保存</button>
+                            <button onClick={cancelEdit} className="text-sm underline text-slate-700">キャンセル</button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-1">{r.date?.slice(0, 10) || r.date}</td>
+                        <td className="py-1">{r.subject}</td>
+                        <td className="py-1">{r.score}</td>
+                        <td className="py-1">
+                          <div className="flex gap-2">
+                            <button onClick={() => startEdit(r)} className="text-sm underline text-slate-700">編集</button>
+                            <button onClick={() => deleteRow(r.id)} className="text-sm text-red-600">削除</button>
+                          </div>
+                        </td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
