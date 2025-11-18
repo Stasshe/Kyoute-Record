@@ -22,7 +22,7 @@ export default function Chart({ data, subjects }: { data: DataPoint[]; subjects:
               stroke={colors[i % colors.length]}
               strokeWidth={2}
               dot={{ r: 3 }}
-              connectNulls={false}
+              connectNulls={true}
             />
           ))}
         </LineChart>
