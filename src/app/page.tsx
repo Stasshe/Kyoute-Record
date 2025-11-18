@@ -210,25 +210,35 @@ export default function GradesPage() {
   }
 
   const chartData = useMemo(() => {
-    // 同じ日に同じ教科が複数ある場合も全て表示するため、配列として扱う
-    const dataPoints: any[] = []
+    // 日付ごとにグループ化して、同じ日に複数データがある場合は連番を振る
+    const dateGroups: Record<string, any[]> = {}
     for (const r of rows) {
       const d = r.date?.split('T')[0] || r.date
-      const time = r.inserted_at || ''
-      // 日付+時刻でユニークなキーを作成
-      const uniqueKey = `${d}_${time}_${r.id}`
-      const point: any = { date: d, uniqueKey }
-      // 全教科をnullで初期化
-      SUBJECTS.forEach(s => point[s] = null)
-      // 該当教科だけ点数を設定
-      point[r.subject] = r.score
-      dataPoints.push(point)
+      if (!dateGroups[d]) dateGroups[d] = []
+      dateGroups[d].push(r)
     }
-    // 日付順にソート
-    return dataPoints.sort((a, b) => {
-      if (a.date !== b.date) return a.date > b.date ? 1 : -1
-      return a.uniqueKey > b.uniqueKey ? 1 : -1
-    })
+    const result: any[] = []
+    const sortedDates = Object.keys(dateGroups).sort()
+    for (const d of sortedDates) {
+      const records = dateGroups[d]
+      // 同じ日付のレコードを inserted_at でソート
+      records.sort((a, b) => (a.inserted_at || '').localeCompare(b.inserted_at || ''))
+      // 各レコードを個別のデータポイントとして追加
+      for (let i = 0; i < records.length; i++) {
+        const r = records[i]
+        const point: any = { 
+          date: i === 0 ? d : `${d} (${i + 1})`, // 2個目以降は連番表示
+          _originalDate: d, // ソート用に元の日付を保持
+          _index: i
+        }
+        // その他の教科は null にしておく
+        SUBJECTS.forEach(s => point[s] = null)
+        // 該当教科のみ点数を設定
+        point[r.subject] = r.score
+        result.push(point)
+      }
+    
+    return result
   }, [rows])
 
   return (
