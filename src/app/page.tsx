@@ -210,44 +210,50 @@ export default function GradesPage() {
   }
 
   const chartData = useMemo(() => {
-    // 日付ごとにグループ化して、同じ日に複数データがある場合は連番を振る
-    const dateGroups: Record<string, any[]> = {}
+    // 日付と教科の組み合わせでグループ化
+    const groups: Record<string, any[]> = {}
     
     for (const r of rows) {
       const d = r.date?.split('T')[0] || r.date
-      if (!dateGroups[d]) dateGroups[d] = []
-      dateGroups[d].push(r)
+      const key = `${d}_${r.subject}`
+      if (!groups[key]) groups[key] = []
+      groups[key].push(r)
     }
     
     const result: any[] = []
-    const sortedDates = Object.keys(dateGroups).sort()
     
-    for (const d of sortedDates) {
-      const records = dateGroups[d]
-      // 同じ日付のレコードを inserted_at でソート
+    // 各グループを処理
+    for (const key in groups) {
+      const records = groups[key]
+      // inserted_at でソート
       records.sort((a, b) => (a.inserted_at || '').localeCompare(b.inserted_at || ''))
       
-      // 各レコードを個別のデータポイントとして追加
       for (let i = 0; i < records.length; i++) {
         const r = records[i]
-        const point: any = { 
-          date: i === 0 ? d : `${d} (${i + 1})`, // 2個目以降は連番表示
-          _originalDate: d, // ソート用に元の日付を保持
-          _index: i
+        const d = r.date?.split('T')[0] || r.date
+        const displayDate = i === 0 ? d : `${d} (${i + 1})`
+        
+        // 既存のデータポイントを探す
+        let point = result.find(p => p.date === displayDate)
+        if (!point) {
+          point = { date: displayDate, _originalDate: d }
+          SUBJECTS.forEach(s => {
+            point[s] = null
+          })
+          result.push(point)
         }
-        // その他の教科は null にしておく
-        SUBJECTS.forEach(s => {
-          point[s] = null
-        })
-        // 該当教科のみ点数を設定
+        
         point[r.subject] = r.score
-        result.push(point)
       }
     }
     
-    return result
+    // 日付順にソート
+    return result.sort((a, b) => {
+      const dateCompare = (a._originalDate || a.date).localeCompare(b._originalDate || b.date)
+      if (dateCompare !== 0) return dateCompare
+      return a.date.localeCompare(b.date)
+    })
   }, [rows])
-
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
