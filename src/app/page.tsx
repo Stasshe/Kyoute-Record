@@ -212,17 +212,21 @@ export default function GradesPage() {
   const chartData = useMemo(() => {
     // 日付ごとにグループ化して、同じ日に複数データがある場合は連番を振る
     const dateGroups: Record<string, any[]> = {}
+    
     for (const r of rows) {
       const d = r.date?.split('T')[0] || r.date
       if (!dateGroups[d]) dateGroups[d] = []
       dateGroups[d].push(r)
     }
+    
     const result: any[] = []
     const sortedDates = Object.keys(dateGroups).sort()
+    
     for (const d of sortedDates) {
       const records = dateGroups[d]
       // 同じ日付のレコードを inserted_at でソート
       records.sort((a, b) => (a.inserted_at || '').localeCompare(b.inserted_at || ''))
+      
       // 各レコードを個別のデータポイントとして追加
       for (let i = 0; i < records.length; i++) {
         const r = records[i]
@@ -232,11 +236,14 @@ export default function GradesPage() {
           _index: i
         }
         // その他の教科は null にしておく
-        SUBJECTS.forEach(s => point[s] = null)
+        SUBJECTS.forEach(s => {
+          point[s] = null
+        })
         // 該当教科のみ点数を設定
         point[r.subject] = r.score
         result.push(point)
       }
+    }
     
     return result
   }, [rows])
