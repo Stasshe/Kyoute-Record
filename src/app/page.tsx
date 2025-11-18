@@ -210,13 +210,25 @@ export default function GradesPage() {
   }
 
   const chartData = useMemo(() => {
-    const map: Record<string, any> = {}
+    // 同じ日に同じ教科が複数ある場合も全て表示するため、配列として扱う
+    const dataPoints: any[] = []
     for (const r of rows) {
       const d = r.date?.split('T')[0] || r.date
-      if (!map[d]) map[d] = { date: d }
-      map[d][r.subject] = r.score
+      const time = r.inserted_at || ''
+      // 日付+時刻でユニークなキーを作成
+      const uniqueKey = `${d}_${time}_${r.id}`
+      const point: any = { date: d, uniqueKey }
+      // 全教科をnullで初期化
+      SUBJECTS.forEach(s => point[s] = null)
+      // 該当教科だけ点数を設定
+      point[r.subject] = r.score
+      dataPoints.push(point)
     }
-    return Object.values(map).sort((a: any, b: any) => (a.date > b.date ? 1 : -1))
+    // 日付順にソート
+    return dataPoints.sort((a, b) => {
+      if (a.date !== b.date) return a.date > b.date ? 1 : -1
+      return a.uniqueKey > b.uniqueKey ? 1 : -1
+    })
   }, [rows])
 
   return (
