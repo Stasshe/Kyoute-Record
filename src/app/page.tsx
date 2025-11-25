@@ -3,7 +3,7 @@ import { supabaseClient } from '@/lib/supabaseClient'
 import React, { useEffect, useMemo, useState } from 'react'
 import Chart from './Chart'
 
-const SUBJECTS = ['Math IA', 'Math 2B', 'Physics', 'Chemistry','Geography','EnR','EnL','Info']
+const SUBJECTS = ['Math IA', 'Math 2B', 'Physics', 'Chemistry','Geography','EnR','EnL','J.Modern','J.Antient','Info']
 const DEFAULT_FROM = '2025-11-07'
 
 export default function GradesPage() {
