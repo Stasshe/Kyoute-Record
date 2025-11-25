@@ -3,14 +3,14 @@ import { supabaseClient } from '@/lib/supabaseClient'
 import React, { useEffect, useMemo, useState } from 'react'
 import Chart from './Chart'
 
-const SUBJECTS = ['Math IA', 'Math 2B', 'Physics', 'Chemistry']
+const SUBJECTS = ['Math IA', 'Math 2B', 'Physics', 'Chemistry','Geography','EnR','EnL','Info']
 const DEFAULT_FROM = '2025-11-07'
 
 export default function GradesPage() {
   const [user, setUser] = useState<any | null>(null)
   const [from, setFrom] = useState<string>(DEFAULT_FROM)
   const [subject, setSubject] = useState<string>(SUBJECTS[0] ?? '')
-  const [score, setScore] = useState<number>(80)
+  const [score, setScore] = useState<number>(40)
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
