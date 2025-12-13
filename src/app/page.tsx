@@ -2,6 +2,7 @@
 import { supabaseClient } from '@/lib/supabaseClient'
 import React, { useEffect, useMemo, useState } from 'react'
 import Chart from './Chart'
+import AuthControls from './AuthControls'
 
 const SUBJECTS = ['Math IA', 'Math 2B', 'Physics', 'Chemistry','Geography','EnR','EnL','J.Modern','J.Antient','Info']
 const DEFAULT_FROM = '2025-11-07'
@@ -14,8 +15,7 @@ export default function GradesPage() {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  const [email, setEmail] = useState<string>('')
-  const [password, setPassword] = useState<string>('')
+  
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10))
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingFields, setEditingFields] = useState<{ date: string; subject: string; score: number }>({
@@ -185,29 +185,7 @@ export default function GradesPage() {
     fetchGrades()
   }
 
-  async function signUpWithEmail() {
-    const { error } = await supabaseClient.auth.signUp({ email, password })
-    if (error) {
-      alert('登録失敗: ' + error.message)
-      return
-    }
-    alert('登録完了。確認メールを確認してください。')
-  }
-
-  async function signInWithEmail() {
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password })
-    if (error) {
-      alert('ログイン失敗: ' + error.message)
-      return
-    }
-    setUser(data.session?.user ?? null)
-  }
-
-  async function signOut() {
-    await supabaseClient.auth.signOut()
-    setUser(null)
-    setRows([])
-  }
+  // authentication is handled in AuthControls component
 
   const chartData = useMemo(() => {
     // まず日付と教科の組み合わせでグループ化して、各グループ内で何番目かを特定
@@ -223,7 +201,7 @@ export default function GradesPage() {
     // 各レコードに表示用の日付を割り当て
     const recordsWithDisplayDate: any[] = []
     for (const key in groups) {
-      const records = groups[key]
+      const records = groups[key] ?? []
       records.sort((a, b) => (a.inserted_at || '').localeCompare(b.inserted_at || ''))
       
       for (let i = 0; i < records.length; i++) {
@@ -267,32 +245,9 @@ export default function GradesPage() {
       <div className="border-b">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-medium">共テ成績管理</h1>
-          
-          {user ? (
-            <div className="flex items-center gap-3 text-sm">
-              <span className="text-gray-600">{user.email}</span>
-              <button onClick={signOut} className="text-gray-700 hover:text-black">ログアウト</button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                type="email"
-                placeholder="メール"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="text-sm px-2 py-1 border rounded w-40"
-              />
-              <input
-                type="password"
-                placeholder="パスワード"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="text-sm px-2 py-1 border rounded w-32"
-              />
-              <button onClick={signInWithEmail} className="text-sm px-3 py-1 bg-black text-white rounded">ログイン</button>
-              <button onClick={signUpWithEmail} className="text-sm px-3 py-1 border rounded">登録</button>
-            </div>
-          )}
+          <div className="relative">
+            <AuthControls user={user} setUser={setUser} setRows={setRows} />
+          </div>
         </div>
       </div>
 
